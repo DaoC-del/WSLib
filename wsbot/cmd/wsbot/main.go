@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -36,8 +37,8 @@ func main() {
 	defer stop()
 
 	// 记录最后心跳时间（不刷日志）
-	var lastHeartbeat atomicTime
-	lastHeartbeat.Set(time.Now())
+	var lastHeartbeat atomic.Value
+	lastHeartbeat.Store(time.Now())
 
 	client := wsclient.New(cfg, func(raw []byte) {
 		// 先快速识别 meta_event（心跳/生命周期），不刷屏
@@ -65,7 +66,7 @@ func main() {
 				return
 			case <-t.C:
 				// 超过 2 分钟没心跳，提示一次
-				if time.Since(lastHeartbeat.Get()) > 2*time.Minute {
+				if time.Since(lastHeartbeat.Load().(time.Time)) > 2*time.Minute {
 					log.Println("⚠️ 心跳超时 > 2m，可能已断开（等待自动重连）")
 				}
 			}
@@ -83,7 +84,7 @@ func main() {
 // —— 解析与处理 —— //
 
 // handleMeta: 返回 true 表示这是 meta_event（心跳等）并已处理，不再向下传
-func handleMeta(last *atomicTime, raw []byte) bool {
+func handleMeta(last *atomic.Value, raw []byte) bool {
 	var probe struct {
 		PostType      string `json:"post_type"`
 		MetaEventType string `json:"meta_event_type"`
@@ -94,7 +95,7 @@ func handleMeta(last *atomicTime, raw []byte) bool {
 	}
 	if probe.PostType == "meta_event" {
 		if probe.MetaEventType == "heartbeat" {
-			last.Set(time.Now())
+			last.Store(time.Now())
 			// 不打印，保持日志干净
 		}
 		return true
@@ -149,31 +150,4 @@ func handleOne(fs *store.FileStore, raw []byte) {
 	default:
 		// 其它消息忽略
 	}
-}
-
-// —— 一个极简的原子时间封装 —— //
-type atomicTime struct {
-	mu  chan struct{}
-	val time.Time
-}
-
-func (a *atomicTime) ensure() {
-	if a.mu == nil {
-		a.mu = make(chan struct{}, 1)
-	}
-}
-
-func (a *atomicTime) Set(t time.Time) {
-	a.ensure()
-	a.mu <- struct{}{}
-	a.val = t
-	<-a.mu
-}
-
-func (a *atomicTime) Get() time.Time {
-	a.ensure()
-	a.mu <- struct{}{}
-	v := a.val
-	<-a.mu
-	return v
 }
