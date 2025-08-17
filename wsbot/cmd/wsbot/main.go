@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"flag"
@@ -103,7 +104,7 @@ func handleMeta(last *atomicTime, raw []byte) bool {
 
 // 既兼容“顶层数组的一帧多事件”，也兼容单对象；返回是否处理过
 func handlePayload(fs *store.FileStore, raw []byte) bool {
-	b := bytesTrim(raw)
+	b := bytes.TrimSpace(raw)
 	if len(b) == 0 {
 		return false
 	}
@@ -148,17 +149,6 @@ func handleOne(fs *store.FileStore, raw []byte) {
 	default:
 		// 其它消息忽略
 	}
-}
-
-func bytesTrim(b []byte) []byte {
-	i, j := 0, len(b)-1
-	for i <= j && (b[i] == ' ' || b[i] == '\n' || b[i] == '\r' || b[i] == '\t') {
-		i++
-	}
-	for j >= i && (b[j] == ' ' || b[j] == '\n' || b[j] == '\r' || b[j] == '\t') {
-		j--
-	}
-	return b[i : j+1]
 }
 
 // —— 一个极简的原子时间封装 —— //
