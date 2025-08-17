@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"example.com/wsbot/internal/util/config"
+	"github.com/DaoC-del/WSLib/wsbot/internal/util/config"
 	"nhooyr.io/websocket"
 )
 
