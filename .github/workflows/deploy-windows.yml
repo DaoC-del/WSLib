@@ -7,14 +7,14 @@ on:
 
 jobs:
   up:
-    # 如你的远端 runner 有自定义标签，改成：
+    # 如你的远端 runner 有自定义标签，把下一行改成：
     # runs-on: [self-hosted, wsbot-remote]
     runs-on: self-hosted
     defaults:
       run:
         shell: powershell
 
-    # 关键：直接把 Secrets 暴露为环境变量，compose 会读取这些变量
+    # 直接把 Secrets 暴露为环境变量，compose 会用到它们
     env:
       ONEBOT_TOKEN: ${{ secrets.ONEBOT_TOKEN }}
       ONEBOT_WS_URL: ws://napcat:3001/?access_token=${{ secrets.ONEBOT_TOKEN }}
@@ -30,6 +30,8 @@ jobs:
           Write-Host "PSVersion: $($PSVersionTable.PSVersion)"
           docker version
           docker compose version; if ($LASTEXITCODE -ne 0) { docker-compose version }
+          Write-Host "Repo root: $(Get-Location)"
+          if (Test-Path ".\docker-compose.yml") { Write-Host "Found docker-compose.yml" } else { Write-Warning "docker-compose.yml NOT found" }
 
       - name: Build & Up (NapCat + wsbot)
         run: |
@@ -44,13 +46,15 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw "Neither 'docker compose' (v2) nor 'docker-compose' (v1) found in PATH" }
           }
 
-          # pull/build/up（命令与参数分开传，避免“docker compose”被当成可执行文件名）
-          & $composeCmd @composeArgsBase "pull" 2>$null
-          if ($LASTEXITCODE -ne 0) { throw "compose pull failed" }
+          # 仅拉取 napcat（image 服务）。wsbot 是 build-only，拉取会报非0，故不对它 pull
+          & $composeCmd @composeArgsBase "pull" "napcat" 2>$null
+          if ($LASTEXITCODE -ne 0) { Write-Warning "compose pull napcat failed（忽略）" }
 
+          # 构建 wsbot（并顺便 --pull 基础镜像）
           & $composeCmd @composeArgsBase "build" "--pull"
           if ($LASTEXITCODE -ne 0) { throw "compose build failed" }
 
+          # 起容器
           & $composeCmd @composeArgsBase "up" "-d"
           if ($LASTEXITCODE -ne 0) { throw "compose up failed" }
 
@@ -58,5 +62,11 @@ jobs:
         if: always()
         run: |
           docker ps -a
-          (& docker compose logs -n 120 napcat) 2>$null
-          (& docker compose logs -n 120 wsbot) 2>$null
+
+          # 再次选择 compose 命令以打印日志
+          $composeCmd = "docker"; $composeArgsBase = @("compose")
+          if (Get-Command docker-compose -ErrorAction SilentlyContinue) { $composeCmd = "docker-compose"; $composeArgsBase = @() }
+
+          # 打印关键日志（不因出错而失败）
+          try { & $composeCmd @composeArgsBase "logs" "-n" "120" "napcat" } catch { Write-Warning $_ }
+          try { & $composeCmd @composeArgsBase "logs" "-n" "120" "wsbot" } catch { Write-Warning $_ }
