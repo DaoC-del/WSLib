@@ -7,15 +7,16 @@ on:
 
 jobs:
   up:
-    # 如远端 runner 有自定义标签，改成：
+    # 如你的远端 runner 有自定义标签，改成：
     # runs-on: [self-hosted, wsbot-remote]
     runs-on: self-hosted
     defaults:
       run:
         shell: powershell
 
-    # 直接把 Secrets 暴露为环境变量，docker compose 会读取这些变量
+    # 关键：固定 compose 项目名 + 直接把 Secrets 暴露为环境变量
     env:
+      COMPOSE_PROJECT_NAME: wslib
       ONEBOT_TOKEN: ${{ secrets.ONEBOT_TOKEN }}
       ONEBOT_WS_URL: ws://napcat:3001/?access_token=${{ secrets.ONEBOT_TOKEN }}
       LOG_LEVEL: info
@@ -30,44 +31,34 @@ jobs:
           Write-Host "PSVersion: $($PSVersionTable.PSVersion)"
           docker version
           docker compose version; if ($LASTEXITCODE -ne 0) { docker-compose version }
-          if (Test-Path ".\docker-compose.yml") { Write-Host "Found docker-compose.yml" } else { Write-Warning "docker-compose.yml NOT found" }
+          if (Test-Path ".\docker-compose.yml") { Write-Host "Found docker-compose.yml" } else { Write-Error "docker-compose.yml NOT found" }
+
+      - name: Compose down (clean old stack)
+        run: |
+          $composeCmd = "docker"; $composeArgsBase = @("compose")
+          if (Get-Command docker-compose -ErrorAction SilentlyContinue) { $composeCmd = "docker-compose"; $composeArgsBase = @() }
+          try { & $composeCmd @composeArgsBase "down" "--remove-orphans" } catch { Write-Warning $_ }
 
       - name: Build & Up (NapCat + wsbot)
         run: |
           $ErrorActionPreference = "Stop"
-
-          # 选择 compose 命令：优先 v1 的 docker-compose；否则用 v2 的 docker compose
+          # 选择 compose 命令（v1 或 v2）
           $composeCmd = "docker"; $composeArgsBase = @("compose")
-          if (Get-Command docker-compose -ErrorAction SilentlyContinue) {
-            $composeCmd = "docker-compose"; $composeArgsBase = @()
-          } else {
-            docker compose version | Out-Null
-            if ($LASTEXITCODE -ne 0) { throw "Neither 'docker compose' (v2) nor 'docker-compose' (v1) found in PATH" }
-          }
+          if (Get-Command docker-compose -ErrorAction SilentlyContinue) { $composeCmd = "docker-compose"; $composeArgsBase = @() } else { docker compose version | Out-Null }
 
-          # 可选 pull（仅 napcat，失败不阻塞）
-          try {
-            & $composeCmd @composeArgsBase "pull" "napcat" 2>$null
-          } catch {
-            Write-Warning "Skip pull napcat: $($_.Exception.Message)"
-          }
-
-          # 构建（wsbot 为本地构建；--pull 会拉基础镜像）
+          # 构建（--pull 会更新基础镜像）
           & $composeCmd @composeArgsBase "build" "--pull"
           if ($LASTEXITCODE -ne 0) { throw "compose build failed" }
 
-          # 启动；若 napcat 镜像不存在，up 会自动拉取
-          & $composeCmd @composeArgsBase "up" "-d"
+          # 启动（强制重建，避免残留）
+          & $composeCmd @composeArgsBase "up" "-d" "--force-recreate"
           if ($LASTEXITCODE -ne 0) { throw "compose up failed" }
 
-      - name: Show status
+      - name: Show status & recent logs
         if: always()
         run: |
           docker ps -a
-
-          # 再选一次 compose 命令，用于打印日志
           $composeCmd = "docker"; $composeArgsBase = @("compose")
           if (Get-Command docker-compose -ErrorAction SilentlyContinue) { $composeCmd = "docker-compose"; $composeArgsBase = @() }
-
           try { & $composeCmd @composeArgsBase "logs" "-n" "120" "napcat" } catch { Write-Warning $_ }
           try { & $composeCmd @composeArgsBase "logs" "-n" "120" "wsbot" } catch { Write-Warning $_ }
