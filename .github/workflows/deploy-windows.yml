@@ -12,18 +12,17 @@ jobs:
       run:
         shell: pwsh
     env:
-      ONEBOT_TOKEN: ${{ secrets.ONEBOT_TOKEN }}  # 在仓库 Settings → Secrets 里设置
+      ONEBOT_TOKEN: ${{ secrets.ONEBOT_TOKEN }}
     steps:
       - uses: actions/checkout@v4
 
       - name: Create .env if missing (from Secrets)
         run: |
           if (!(Test-Path ".env")) {
-            @"
-ONEBOT_TOKEN=$env:ONEBOT_TOKEN
-ONEBOT_WS_URL=ws://napcat:3001/?access_token=$env:ONEBOT_TOKEN
-LOG_LEVEL=info
-"@ | Out-File -Encoding ASCII .env
+            if (-not $env:ONEBOT_TOKEN) { throw "Actions Secret ONEBOT_TOKEN is missing" }
+            "ONEBOT_TOKEN=$env:ONEBOT_TOKEN" | Out-File -Encoding ASCII .env
+            "ONEBOT_WS_URL=ws://napcat:3001/?access_token=$env:ONEBOT_TOKEN" | Add-Content -Encoding ASCII .env
+            "LOG_LEVEL=info" | Add-Content -Encoding ASCII .env
           }
 
       - name: Docker compose up
@@ -34,5 +33,5 @@ LOG_LEVEL=info
 
       - name: Show status
         run: |
-          docker ps
-          docker compose logs -n 50 --no-color
+          docker compose ps
+          docker compose logs -n 80 --no-color || $true
