@@ -5,7 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"flag"
-	"log"
+	"log/slog"
 	"os"
 	"os/signal"
 	"strings"
@@ -19,17 +19,35 @@ import (
 	"example.com/wsbot/internal/util/config"
 )
 
+var (
+	logLevel = new(slog.LevelVar)
+	logger   = slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: logLevel}))
+)
+
 func main() {
 	cfgPath := flag.String("config", "./config.yaml", "path to config file")
 	flag.Parse()
 
 	cfg, err := config.Load(*cfgPath)
 	if err != nil {
-		log.Fatalf("load config: %v", err)
+		logger.Error("load config", "error", err)
+		os.Exit(1)
 	}
+	switch strings.ToLower(cfg.App.LogLevel) {
+	case "debug":
+		logLevel.Set(slog.LevelDebug)
+	case "warn", "warning":
+		logLevel.Set(slog.LevelWarn)
+	case "error":
+		logLevel.Set(slog.LevelError)
+	default:
+		logLevel.Set(slog.LevelInfo)
+	}
+
 	fs, err := store.NewFileStore(cfg.Store.Path)
 	if err != nil {
-		log.Fatalf("init store: %v", err)
+		logger.Error("init store", "error", err)
+		os.Exit(1)
 	}
 	defer fs.Close()
 
@@ -51,9 +69,10 @@ func main() {
 		}
 	})
 
-	log.Printf("ws connect to %s\n", cfg.WS.URL)
+	logger.Info("ws connect", "url", cfg.WS.URL)
 	if err := client.Start(ctx); err != nil {
-		log.Fatalf("ws start: %v", err)
+		logger.Error("ws start", "error", err)
+		os.Exit(1)
 	}
 
 	// 可选：背景健康检查（不刷屏，仅在超时才报警）
@@ -67,16 +86,16 @@ func main() {
 			case <-t.C:
 				// 超过 2 分钟没心跳，提示一次
 				if time.Since(lastHeartbeat.Load().(time.Time)) > 2*time.Minute {
-					log.Println("⚠️ 心跳超时 > 2m，可能已断开（等待自动重连）")
+					logger.Warn("⚠️ 心跳超时 > 2m，可能已断开（等待自动重连）")
 				}
 			}
 		}
 	}()
 
 	<-ctx.Done()
-	log.Println("shutting down...")
+	logger.Info("shutting down...")
 	if err := client.Close(); err != nil {
-		log.Println("close error:", err)
+		logger.Error("close error", "error", err)
 	}
 	_ = os.Stderr.Sync()
 }
@@ -137,15 +156,15 @@ func handleOne(fs *store.FileStore, raw []byte) {
 	switch text {
 	case "上班":
 		if err := fs.AppendEvent(msg.UserID, "上班", msg.Timestamp); err != nil {
-			log.Printf("append 上班 error: %v", err)
+			logger.Error("append 上班", "error", err)
 		} else {
-			log.Printf("[记录成功] user=%s 上班 at %s", msg.UserID, msg.Timestamp.Format(time.RFC3339))
+			logger.Info("[记录成功]", "user", msg.UserID, "event", "上班", "at", msg.Timestamp.Format(time.RFC3339))
 		}
 	case "下班":
 		if err := fs.AppendEvent(msg.UserID, "下班", msg.Timestamp); err != nil {
-			log.Printf("append 下班 error: %v", err)
+			logger.Error("append 下班", "error", err)
 		} else {
-			log.Printf("[记录成功] user=%s 下班 at %s", msg.UserID, msg.Timestamp.Format(time.RFC3339))
+			logger.Info("[记录成功]", "user", msg.UserID, "event", "下班", "at", msg.Timestamp.Format(time.RFC3339))
 		}
 	default:
 		// 其它消息忽略
