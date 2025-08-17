@@ -1,6 +1,13 @@
+<<<<<<< HEAD
 .env
 napcat-data/
 bin/
 dist/
 out/
 *.log
+=======
+wsbot/data/
+napcat/
+*.log
+.env
+>>>>>>> e7d2c1d25da6b5d530776c37bd8bf0643a463ece

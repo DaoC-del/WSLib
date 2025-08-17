@@ -5,13 +5,18 @@ import (
 	"errors"
 	"log"
 	"math"
+	"math/rand"
 	"net/http"
 	"sync"
 	"time"
 
-	"example.com/wsbot/internal/util/config"
+	"github.com/DaoC-del/WSLib/wsbot/internal/util/config"
 	"nhooyr.io/websocket"
 )
+
+func init() {
+	rand.Seed(time.Now().UnixNano())
+}
 
 type OnMessage func(raw []byte)
 
@@ -191,5 +196,6 @@ func backoffTime(cfg config.Config, retries int) time.Duration {
 	if d <= 0 {
 		d = 1 * time.Second
 	}
-	return d
+	jitter := 1 + (rand.Float64()*0.2 - 0.1)
+	return time.Duration(float64(d) * jitter)
 }
