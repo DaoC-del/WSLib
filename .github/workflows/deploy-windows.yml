@@ -7,46 +7,52 @@ on:
 
 jobs:
   up:
-    runs-on: self-hosted            # 有标签时： [self-hosted, wsbot-remote]
+    # 如你的远端 runner 有自定义标签，改成：
+    # runs-on: [self-hosted, wsbot-remote]
+    runs-on: self-hosted
     defaults:
       run:
         shell: powershell
 
-    # 关键：把 Secrets 直接暴露为环境变量，compose 会用到它们
+    # 关键：直接把 Secrets 暴露为环境变量，compose 会读取这些变量
     env:
       ONEBOT_TOKEN: ${{ secrets.ONEBOT_TOKEN }}
       ONEBOT_WS_URL: ws://napcat:3001/?access_token=${{ secrets.ONEBOT_TOKEN }}
       LOG_LEVEL: info
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
       - name: Diagnostics
         run: |
+          Write-Host "User: $(whoami)"
+          Write-Host "PSVersion: $($PSVersionTable.PSVersion)"
           docker version
-          # 兼容 v2 / v1
           docker compose version; if ($LASTEXITCODE -ne 0) { docker-compose version }
 
       - name: Build & Up (NapCat + wsbot)
         run: |
-          # 自动选择 compose 命令
-          docker compose version *> $null
-          if ($LASTEXITCODE -ne 0) { $compose = "docker-compose" } else { $compose = "docker compose" }
+          # 选择 compose 命令：优先 v1 的 docker-compose；否则用 v2 的 docker compose
+          $composeCmd = "docker"
+          $composeArgsBase = @("compose")
+          if (Get-Command docker-compose -ErrorAction SilentlyContinue) {
+            $composeCmd = "docker-compose"
+            $composeArgsBase = @()
+          } else {
+            docker compose version | Out-Null
+            if ($LASTEXITCODE -ne 0) { throw "Neither 'docker compose' (v2) nor 'docker-compose' (v1) found in PATH" }
+          }
 
-          # 如果你要强制用仓库根目录的 compose 文件：
-          # $file = "docker-compose.yml"
-          # & $compose -f $file pull 2>$null
-          # & $compose -f $file build --pull
-          # & $compose -f $file up -d
+          # pull/build/up（命令与参数分开传，避免“docker compose”被当成可执行文件名）
+          & $composeCmd @composeArgsBase "pull" 2>$null
+          if ($LASTEXITCODE -ne 0) { throw "compose pull failed" }
 
-          & $compose pull 2>$null
-          if ($LASTEXITCODE -ne 0) { Write-Error "compose pull failed"; exit 1 }
+          & $composeCmd @composeArgsBase "build" "--pull"
+          if ($LASTEXITCODE -ne 0) { throw "compose build failed" }
 
-          & $compose build --pull
-          if ($LASTEXITCODE -ne 0) { Write-Error "compose build failed"; exit 1 }
-
-          & $compose up -d
-          if ($LASTEXITCODE -ne 0) { Write-Error "compose up failed"; exit 1 }
+          & $composeCmd @composeArgsBase "up" "-d"
+          if ($LASTEXITCODE -ne 0) { throw "compose up failed" }
 
       - name: Show status
         if: always()
