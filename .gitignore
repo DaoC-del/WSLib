@@ -1,0 +1,4 @@
+wsbot/data/
+napcat/
+*.log
+.env
