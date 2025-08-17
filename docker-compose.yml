@@ -1,10 +1,14 @@
+version: "3.9"
+
 services:
   napcat:
     image: mlikiowa/napcat-docker:latest
-    # 首次配置需要访问 WebUI；初始化后可改为仅本机：127.0.0.1:6099:6099
+    # 首次配置需要进 WebUI；初始化后你也可以把端口收紧
     ports:
       - "6099:6099"   # NapCat WebUI
-      - "3001:3001"   # OneBot WebSocket（wsbot 直接用 napcat:3001）
+      - "3001:3001"   # OneBot WS 服务端（方便初期排查；容器内其实用服务名直连）
+      # - "6081:6081" # (可选) NoVNC 扫码登录面板
+      # - "3000:3000" # (可选) HTTP API
     volumes:
       - ./napcat-data/config:/app/napcat/config
       - ./napcat-data/qq:/app/.config/QQ
@@ -14,16 +18,21 @@ services:
   wsbot:
     build:
       context: .
-      dockerfile: Dockerfile      # 根目录这份 Dockerfile（构建 wsbot/ 模块）
-      # 如果你想固定入口包，可解开并填写：
+      dockerfile: Dockerfile
+      # 若需要固定入口包，可启用以下 ARG 并在 Dockerfile 里使用
       # args:
       #   MAINPKG: ./cmd/wsbot
     depends_on: [napcat]
-    environment:
-      ONEBOT_TOKEN: ${ONEBOT_TOKEN}
-      ONEBOT_WS_URL: ${ONEBOT_WS_URL}  # 由 workflow 注入：ws://napcat:3001/?access_token=...
-      LOG_LEVEL: ${LOG_LEVEL:-info}
     restart: unless-stopped
+    working_dir: /app                          # ★ 固定进程的 CWD
+    volumes:
+      - ./wsbot/config.yaml:/app/config.yaml:ro  # ★ 把宿主机配置挂进来（文件名固定为 config.yaml）
+      - ./data:/app/data                         # ★ 数据目录（对应 config 里的 ./data/worklog.json）
+    environment:
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      # （可留作将来用；当前进程读取的是 config.yaml）
+      ONEBOT_TOKEN: ${ONEBOT_TOKEN:-}
+      ONEBOT_WS_URL: ${ONEBOT_WS_URL:-}
     networks: [botnet]
 
 networks:
