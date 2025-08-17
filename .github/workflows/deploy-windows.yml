@@ -7,31 +7,50 @@ on:
 
 jobs:
   up:
-    runs-on: self-hosted
+    runs-on: self-hosted            # 有标签时： [self-hosted, wsbot-remote]
     defaults:
       run:
-        shell: pwsh
+        shell: powershell
+
+    # 关键：把 Secrets 直接暴露为环境变量，compose 会用到它们
     env:
       ONEBOT_TOKEN: ${{ secrets.ONEBOT_TOKEN }}
+      ONEBOT_WS_URL: ws://napcat:3001/?access_token=${{ secrets.ONEBOT_TOKEN }}
+      LOG_LEVEL: info
+
     steps:
       - uses: actions/checkout@v4
 
-      - name: Create .env if missing (from Secrets)
+      - name: Diagnostics
         run: |
-          if (!(Test-Path ".env")) {
-            if (-not $env:ONEBOT_TOKEN) { throw "Actions Secret ONEBOT_TOKEN is missing" }
-            "ONEBOT_TOKEN=$env:ONEBOT_TOKEN" | Out-File -Encoding ASCII .env
-            "ONEBOT_WS_URL=ws://napcat:3001/?access_token=$env:ONEBOT_TOKEN" | Add-Content -Encoding ASCII .env
-            "LOG_LEVEL=info" | Add-Content -Encoding ASCII .env
-          }
+          docker version
+          # 兼容 v2 / v1
+          docker compose version; if ($LASTEXITCODE -ne 0) { docker-compose version }
 
-      - name: Docker compose up
+      - name: Build & Up (NapCat + wsbot)
         run: |
-          docker compose pull 2>$null
-          docker compose build --pull
-          docker compose up -d
+          # 自动选择 compose 命令
+          docker compose version *> $null
+          if ($LASTEXITCODE -ne 0) { $compose = "docker-compose" } else { $compose = "docker compose" }
+
+          # 如果你要强制用仓库根目录的 compose 文件：
+          # $file = "docker-compose.yml"
+          # & $compose -f $file pull 2>$null
+          # & $compose -f $file build --pull
+          # & $compose -f $file up -d
+
+          & $compose pull 2>$null
+          if ($LASTEXITCODE -ne 0) { Write-Error "compose pull failed"; exit 1 }
+
+          & $compose build --pull
+          if ($LASTEXITCODE -ne 0) { Write-Error "compose build failed"; exit 1 }
+
+          & $compose up -d
+          if ($LASTEXITCODE -ne 0) { Write-Error "compose up failed"; exit 1 }
 
       - name: Show status
+        if: always()
         run: |
-          docker compose ps
-          docker compose logs -n 80 --no-color || $true
+          docker ps -a
+          (& docker compose logs -n 120 napcat) 2>$null
+          (& docker compose logs -n 120 wsbot) 2>$null

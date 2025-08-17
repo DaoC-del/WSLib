@@ -1,35 +1,22 @@
-version: "3.8"
-
 services:
   napcat:
     image: mlikiowa/napcat-docker:latest
-    container_name: napcat
     ports:
-      - "6099:6099"   # NapCat WebUI
-      - "3001:3001"   # OneBot WebSocket Server（在 WebUI 里启用/设定）
+      - "6099:6099"      # WebUI（首次初始化用）
+      - "3001:3001"      # OneBot WS
     volumes:
       - ./napcat-data/config:/app/napcat/config
       - ./napcat-data/qq:/app/.config/QQ
     restart: unless-stopped
-    networks: [botnet]
 
   wsbot:
     build:
       context: .
-      dockerfile: Dockerfile
-    container_name: wsbot
-    # 兼容你程序里的环境变量命名（任选其一使用）
-    environment:
-      - ONEBOT_TOKEN=${ONEBOT_TOKEN}
-      - ONEBOT_WS_URL=${ONEBOT_WS_URL}
-      - WS_URL=${ONEBOT_WS_URL}
-      - LOG_LEVEL=${LOG_LEVEL:-info}
-    env_file:
-      - .env
+      dockerfile: Dockerfile      # 若你的 Go 入口不是 ./wsbot，请改这里
     depends_on:
       - napcat
+    environment:
+      ONEBOT_TOKEN: ${ONEBOT_TOKEN}
+      ONEBOT_WS_URL: ${ONEBOT_WS_URL}   # 由 workflow 注入，值为 ws://napcat:3001/?access_token=...
+      LOG_LEVEL: ${LOG_LEVEL:-info}
     restart: unless-stopped
-    networks: [botnet]
-
-networks:
-  botnet: {}
