@@ -13,10 +13,10 @@ import (
 	"syscall"
 	"time"
 
-	"example.com/wsbot/internal/model"
-	"example.com/wsbot/internal/store"
-	"example.com/wsbot/internal/transport/wsclient"
-	"example.com/wsbot/internal/util/config"
+	"github.com/DaoC-del/WSLib/wsbot/internal/model"
+	"github.com/DaoC-del/WSLib/wsbot/internal/store"
+	"github.com/DaoC-del/WSLib/wsbot/internal/transport/wsclient"
+	"github.com/DaoC-del/WSLib/wsbot/internal/util/config"
 )
 
 var (

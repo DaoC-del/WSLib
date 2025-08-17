@@ -1,4 +1,4 @@
-module example.com/wsbot
+module github.com/DaoC-del/WSLib/wsbot
 
 go 1.22.0
 
