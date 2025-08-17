@@ -1,0 +1,18 @@
+app:
+  log_level: "info"
+
+ws:
+  # 如果和 NapCat 在同一台机：127.0.0.1
+  # 如果是另一台机：改成 NapCat 那台机的 IP
+  url:   "ws://127.0.0.1:3001"
+  token: ""                     # 若 NapCat 面板里填了 Token，这里也填同样的值
+  heartbeat_sec: 20
+  read_timeout_sec: 60
+  reconnect:
+    enabled: true
+    max_retries: 0
+    base_seconds: 1
+    max_seconds: 30
+
+store:
+  path: "./data/worklog.json"
