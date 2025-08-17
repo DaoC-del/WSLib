@@ -1,0 +1,6 @@
+.env
+napcat-data/
+bin/
+dist/
+out/
+*.log
